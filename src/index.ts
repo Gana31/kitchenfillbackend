@@ -37,6 +37,10 @@ app.use(async (req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/ingredients', ingredientsRoutes);
 
+app.get('/', (req, res) => {
+  res.json({ message: 'Welcome to the Cloud Kitchen Inventory API!', status: 'running' });
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date() });
 });
