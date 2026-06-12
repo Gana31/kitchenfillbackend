@@ -118,7 +118,8 @@ export class IngredientsController {
         conversionRatio, 
         initialQuantity, 
         purchaseCost,
-        image
+        image,
+        category
       } = req.body;
 
       if (!name || minThreshold === undefined || !purchaseUnit || !baseUnit || !conversionRatio) {
@@ -164,6 +165,7 @@ export class IngredientsController {
         tenantId,
         restaurantId: restaurant._id,
         name: name.trim(),
+        category: category || 'Pantry',
         currentStock: baseQuantity,
         minThreshold: Number(minThreshold) || 0,
         unitRelation: {
@@ -214,7 +216,8 @@ export class IngredientsController {
         baseUnit, 
         conversionRatio, 
         currentStock, 
-        image 
+        image,
+        category
       } = req.body;
 
       if (!name || minThreshold === undefined || !purchaseUnit || !baseUnit || !conversionRatio) {
@@ -252,6 +255,9 @@ export class IngredientsController {
 
       // Update fields
       ingredient.name = name.trim();
+      if (category !== undefined) {
+        ingredient.category = category;
+      }
       ingredient.minThreshold = Number(minThreshold) || 0;
       ingredient.unitRelation = {
         purchaseUnit,
@@ -294,6 +300,43 @@ export class IngredientsController {
       return res.status(500).json({
         success: false,
         error: error.message || 'Failed to update ingredient.',
+      });
+    }
+  }
+
+  /**
+   * DELETE /api/ingredients/:id
+   * Delete an existing ingredient.
+   */
+  public async deleteIngredient(req: AuthenticatedRequest, res: Response) {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context is missing.' });
+      }
+
+      const { id } = req.params;
+      const restaurant = await getOrCreateDefaultRestaurant(tenantId);
+
+      const deleted = await Ingredient.findOneAndDelete({ 
+        _id: id,
+        tenantId,
+        restaurantId: restaurant._id
+      });
+
+      if (!deleted) {
+        return res.status(404).json({ success: false, error: 'Ingredient not found.' });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Ingredient successfully deleted.',
+      });
+    } catch (error: any) {
+      console.error('Delete Ingredient Error:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to delete ingredient.',
       });
     }
   }

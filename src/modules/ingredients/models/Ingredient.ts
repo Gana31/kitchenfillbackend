@@ -22,6 +22,7 @@ export interface IIngredient extends Document {
   tenantId: Types.ObjectId;
   restaurantId: Types.ObjectId;
   name: string;
+  category?: string;
   currentStock: number; // Sum of remaining batch quantities
   minThreshold: number; // Triggers alert when stock <= threshold (in base units)
   unitRelation: IUnitRelation;
@@ -88,6 +89,10 @@ const ingredientSchema = new Schema<IIngredient>({
   image: {
     type: String,
     default: null,
+  },
+  category: {
+    type: String,
+    default: 'Pantry',
   },
 });
 
