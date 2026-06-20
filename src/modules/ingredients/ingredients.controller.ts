@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { Ingredient } from './models/Ingredient';
 import { Restaurant } from '../auth/models/Restaurant';
+import { withStockLevel } from './stockLevel';
 
 /**
  * Resolves the default restaurant for a given tenant.
@@ -25,7 +26,7 @@ async function getOrCreateDefaultRestaurant(tenantId: string): Promise<any> {
 export class IngredientsController {
   /**
    * GET /api/ingredients
-   * List all ingredients for the tenant's restaurant.
+   * Paginated ingredient list with optional search and sort.
    */
   public async getIngredients(req: AuthenticatedRequest, res: Response) {
     try {
@@ -36,14 +37,57 @@ export class IngredientsController {
 
       const restaurant = await getOrCreateDefaultRestaurant(tenantId);
 
-      const ingredients = await Ingredient.find({ 
-        tenantId, 
-        restaurantId: restaurant._id 
-      });
+      const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
+      const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit || '15'), 10) || 15));
+      const skip = (page - 1) * limit;
+      const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+      const sortBy = typeof req.query.sortBy === 'string' ? req.query.sortBy : 'name-asc';
+
+      const filter: Record<string, unknown> = {
+        tenantId,
+        restaurantId: restaurant._id,
+      };
+
+      if (search) {
+        filter.name = { $regex: search, $options: 'i' };
+      }
+
+      let sort: Record<string, 1 | -1> = { name: 1 };
+      switch (sortBy) {
+        case 'name-desc':
+          sort = { name: -1 };
+          break;
+        case 'stock-asc':
+          sort = { currentStock: 1 };
+          break;
+        case 'stock-desc':
+          sort = { currentStock: -1 };
+          break;
+        default:
+          sort = { name: 1 };
+      }
+
+      const baseFilter = { tenantId, restaurantId: restaurant._id };
+
+      const [ingredients, total, lowStockCount] = await Promise.all([
+        Ingredient.find(filter).sort(sort).skip(skip).limit(limit).lean(),
+        Ingredient.countDocuments(filter),
+        Ingredient.countDocuments({
+          ...baseFilter,
+          $expr: { $lte: ['$currentStock', '$minThreshold'] },
+        }),
+      ]);
 
       return res.status(200).json({
         success: true,
-        ingredients,
+        ingredients: ingredients.map((ingredient) => withStockLevel(ingredient)),
+        pagination: {
+          page,
+          limit,
+          total,
+          hasMore: skip + ingredients.length < total,
+        },
+        lowStockCount,
       });
     } catch (error: any) {
       console.error('Get Ingredients Error:', error);
@@ -186,7 +230,7 @@ export class IngredientsController {
       return res.status(201).json({
         success: true,
         message: 'Ingredient successfully created.',
-        ingredient: newIngredient,
+        ingredient: withStockLevel(newIngredient.toObject()),
       });
     } catch (error: any) {
       console.error('Create Ingredient Error:', error);
@@ -217,7 +261,8 @@ export class IngredientsController {
         conversionRatio, 
         currentStock, 
         image,
-        category
+        category,
+        purchaseUnitPrice
       } = req.body;
 
       if (!name || minThreshold === undefined || !purchaseUnit || !baseUnit || !conversionRatio) {
@@ -269,6 +314,23 @@ export class IngredientsController {
         ingredient.image = image;
       }
 
+      if (purchaseUnitPrice !== undefined) {
+        const ratio = Number(conversionRatio) || 1;
+        const price = Number(purchaseUnitPrice) || 0;
+        const costPerBaseUnit = ratio > 0 ? price / ratio : 0;
+
+        if (ingredient.batches.length > 0) {
+          ingredient.batches[ingredient.batches.length - 1].costPerBaseUnit = costPerBaseUnit;
+        } else if (ingredient.currentStock > 0) {
+          ingredient.batches.push({
+            purchaseDate: new Date(),
+            originalQuantity: ingredient.currentStock,
+            remainingQuantity: ingredient.currentStock,
+            costPerBaseUnit,
+          });
+        }
+      }
+
       // If stock is modified, update currentStock and adjust batches
       if (currentStock !== undefined) {
         const newStock = Number(currentStock) || 0;
@@ -293,7 +355,7 @@ export class IngredientsController {
       return res.status(200).json({
         success: true,
         message: 'Ingredient successfully updated.',
-        ingredient,
+        ingredient: withStockLevel(ingredient.toObject()),
       });
     } catch (error: any) {
       console.error('Update Ingredient Error:', error);
