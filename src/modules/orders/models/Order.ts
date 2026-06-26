@@ -17,7 +17,7 @@ export interface IOrder extends Document {
   grossAmount: number; // Selling price sum (after discount, before platform commission)
   commissionCut: number; // Platform cut fee percent (e.g., 30 for Zomato)
   netAmount: number; // Net payout after aggregator fee
-  makingCost: number; // COGS (Cost of Goods Sold) computed via FIFO stock batches
+  makingCost: number; // COGS from ingredient purchasePrice at time of sale
   netProfit: number; // netAmount - makingCost
   processedAt: Date;
   errorMessage?: string;

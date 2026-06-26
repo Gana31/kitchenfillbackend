@@ -1,12 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
 
-export interface IStockBatch {
-  purchaseDate: Date;
-  originalQuantity: number; // Base units (g, ml, pcs)
-  remainingQuantity: number; // Base units (g, ml, pcs)
-  costPerBaseUnit: number; // Purchase price / conversion ratio
-}
-
 export interface IUnitRelation {
   purchaseUnit: 'kg' | 'liter' | 'pack';
   baseUnit: 'g' | 'ml' | 'pcs';
@@ -23,20 +16,14 @@ export interface IIngredient extends Document {
   restaurantId: Types.ObjectId;
   name: string;
   category?: string;
-  currentStock: number; // Sum of remaining batch quantities
-  minThreshold: number; // Triggers alert when stock <= threshold (in base units)
+  currentStock: number; // In base units (g, ml, pcs)
+  minThreshold: number; // In base units
   unitRelation: IUnitRelation;
-  batches: IStockBatch[];
+  /** Price per purchase unit (₹/kg, ₹/liter, ₹/pack). Updated when you buy at a new rate. */
+  purchasePrice: number;
   alerts: IIngredientAlert;
   image?: string | null;
 }
-
-const stockBatchSchema = new Schema<IStockBatch>({
-  purchaseDate: { type: Date, default: Date.now },
-  originalQuantity: { type: Number, required: true, min: 0 },
-  remainingQuantity: { type: Number, required: true, min: 0 },
-  costPerBaseUnit: { type: Number, required: true, min: 0 },
-}, { _id: false });
 
 const unitRelationSchema = new Schema<IUnitRelation>({
   purchaseUnit: { type: String, enum: ['kg', 'liter', 'pack'], required: true },
@@ -78,9 +65,11 @@ const ingredientSchema = new Schema<IIngredient>({
     type: unitRelationSchema,
     required: true,
   },
-  batches: {
-    type: [stockBatchSchema],
-    default: [],
+  purchasePrice: {
+    type: Number,
+    required: true,
+    min: 0,
+    default: 0,
   },
   alerts: {
     isAcknowledged: { type: Boolean, default: false, required: true },
@@ -96,7 +85,6 @@ const ingredientSchema = new Schema<IIngredient>({
   },
 });
 
-// Enforce unique ingredients per restaurant location
 ingredientSchema.index({ restaurantId: 1, name: 1 }, { unique: true });
 
 export const Ingredient = model<IIngredient>('Ingredient', ingredientSchema);

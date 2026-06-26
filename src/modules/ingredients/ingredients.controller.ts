@@ -5,10 +5,6 @@ import { Ingredient } from './models/Ingredient';
 import { Restaurant } from '../auth/models/Restaurant';
 import { withStockLevel } from './stockLevel';
 
-/**
- * Resolves the default restaurant for a given tenant.
- * Seeding on-the-fly if it does not already exist.
- */
 async function getOrCreateDefaultRestaurant(tenantId: string): Promise<any> {
   let restaurant = await Restaurant.findOne({ tenantId });
   if (!restaurant) {
@@ -24,10 +20,6 @@ async function getOrCreateDefaultRestaurant(tenantId: string): Promise<any> {
 }
 
 export class IngredientsController {
-  /**
-   * GET /api/ingredients
-   * Paginated ingredient list with optional search and sort.
-   */
   public async getIngredients(req: AuthenticatedRequest, res: Response) {
     try {
       const tenantId = req.user?.tenantId;
@@ -38,10 +30,10 @@ export class IngredientsController {
       const restaurant = await getOrCreateDefaultRestaurant(tenantId);
 
       const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
-      const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit || '15'), 10) || 15));
-      const skip = (page - 1) * limit;
       const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
       const sortBy = typeof req.query.sortBy === 'string' ? req.query.sortBy : 'name-asc';
+      const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit || '15'), 10) || 15));
+      const skip = (page - 1) * limit;
 
       const filter: Record<string, unknown> = {
         tenantId,
@@ -56,12 +48,6 @@ export class IngredientsController {
       switch (sortBy) {
         case 'name-desc':
           sort = { name: -1 };
-          break;
-        case 'stock-asc':
-          sort = { currentStock: 1 };
-          break;
-        case 'stock-desc':
-          sort = { currentStock: -1 };
           break;
         default:
           sort = { name: 1 };
@@ -98,10 +84,6 @@ export class IngredientsController {
     }
   }
 
-  /**
-   * GET /api/ingredients/upload-signature
-   * Generate signature credentials for direct frontend upload to Cloudinary.
-   */
   public async getUploadSignature(req: AuthenticatedRequest, res: Response) {
     try {
       const apiSecret = process.env.cloudnary_api_scerate;
@@ -109,9 +91,9 @@ export class IngredientsController {
       const cloudName = process.env.cloudnary_cloud_name || 'ganeshronghe2';
 
       if (!apiSecret || !apiKey) {
-        return res.status(500).json({ 
-          success: false, 
-          error: 'Cloudinary configuration is missing on the server. Make sure cloudnary_api_scerate and cloudnary_api_key are set in .env' 
+        return res.status(500).json({
+          success: false,
+          error: 'Cloudinary configuration is missing on the server. Make sure cloudnary_api_scerate and cloudnary_api_key are set in .env',
         });
       }
 
@@ -143,10 +125,6 @@ export class IngredientsController {
     }
   }
 
-  /**
-   * POST /api/ingredients
-   * Create a new ingredient and add its initial batch.
-   */
   public async createIngredient(req: AuthenticatedRequest, res: Response) {
     try {
       const tenantId = req.user?.tenantId;
@@ -154,56 +132,43 @@ export class IngredientsController {
         return res.status(400).json({ success: false, error: 'Tenant context is missing.' });
       }
 
-      const { 
-        name, 
-        minThreshold, 
-        purchaseUnit, 
-        baseUnit, 
-        conversionRatio, 
-        initialQuantity, 
+      const {
+        name,
+        minThreshold,
+        purchaseUnit,
+        baseUnit,
+        conversionRatio,
+        initialQuantity,
         purchaseCost,
+        purchasePrice,
         image,
-        category
+        category,
       } = req.body;
 
       if (!name || minThreshold === undefined || !purchaseUnit || !baseUnit || !conversionRatio) {
-        return res.status(400).json({ 
-          success: false, 
-          error: 'Missing required fields: name, minThreshold, purchaseUnit, baseUnit, conversionRatio.' 
+        return res.status(400).json({
+          success: false,
+          error: 'Missing required fields: name, minThreshold, purchaseUnit, baseUnit, conversionRatio.',
         });
       }
 
       const restaurant = await getOrCreateDefaultRestaurant(tenantId);
 
-      // Check if ingredient with this name already exists at this restaurant
-      const existing = await Ingredient.findOne({ 
-        restaurantId: restaurant._id, 
-        name: name.trim() 
+      const existing = await Ingredient.findOne({
+        restaurantId: restaurant._id,
+        name: name.trim(),
       });
       if (existing) {
-        return res.status(400).json({ 
-          success: false, 
-          error: 'An ingredient with this name already exists in your inventory.' 
+        return res.status(400).json({
+          success: false,
+          error: 'An ingredient with this name already exists in your inventory.',
         });
       }
 
-      // Calculate initial stock base values
       const qty = Number(initialQuantity) || 0;
-      const cost = Number(purchaseCost) || 0;
       const ratio = Number(conversionRatio) || 1;
-
       const baseQuantity = qty * ratio;
-      const costPerBaseUnit = baseQuantity > 0 ? (cost / baseQuantity) : 0;
-
-      const batches = [];
-      if (baseQuantity > 0) {
-        batches.push({
-          purchaseDate: new Date(),
-          originalQuantity: baseQuantity,
-          remainingQuantity: baseQuantity,
-          costPerBaseUnit: costPerBaseUnit
-        });
-      }
+      const price = Number(purchasePrice ?? purchaseCost) || 0;
 
       const newIngredient = new Ingredient({
         tenantId,
@@ -212,17 +177,17 @@ export class IngredientsController {
         category: category || 'Pantry',
         currentStock: baseQuantity,
         minThreshold: Number(minThreshold) || 0,
+        purchasePrice: price,
         unitRelation: {
           purchaseUnit,
           baseUnit,
-          conversionRatio: ratio
+          conversionRatio: ratio,
         },
-        batches,
         image: image || null,
         alerts: {
           isAcknowledged: false,
-          snoozedUntil: null
-        }
+          snoozedUntil: null,
+        },
       });
 
       await newIngredient.save();
@@ -241,10 +206,6 @@ export class IngredientsController {
     }
   }
 
-  /**
-   * PUT /api/ingredients/:id
-   * Update an existing ingredient's details.
-   */
   public async updateIngredient(req: AuthenticatedRequest, res: Response) {
     try {
       const tenantId = req.user?.tenantId;
@@ -253,101 +214,103 @@ export class IngredientsController {
       }
 
       const { id } = req.params;
-      const { 
-        name, 
-        minThreshold, 
-        purchaseUnit, 
-        baseUnit, 
-        conversionRatio, 
-        currentStock, 
+      const {
+        name,
+        minThreshold,
+        purchaseUnit,
+        baseUnit,
+        conversionRatio,
+        currentStock,
         image,
         category,
-        purchaseUnitPrice
+        purchasePrice,
+        purchaseUnitPrice,
+        purchaseCost,
       } = req.body;
 
-      if (!name || minThreshold === undefined || !purchaseUnit || !baseUnit || !conversionRatio) {
-        return res.status(400).json({ 
-          success: false, 
-          error: 'Missing required fields: name, minThreshold, purchaseUnit, baseUnit, conversionRatio.' 
-        });
+      const hasUpdate =
+        name !== undefined ||
+        minThreshold !== undefined ||
+        purchaseUnit !== undefined ||
+        baseUnit !== undefined ||
+        conversionRatio !== undefined ||
+        currentStock !== undefined ||
+        image !== undefined ||
+        category !== undefined ||
+        purchasePrice !== undefined ||
+        purchaseUnitPrice !== undefined ||
+        purchaseCost !== undefined;
+
+      if (!hasUpdate) {
+        return res.status(400).json({ success: false, error: 'No fields to update.' });
       }
 
       const restaurant = await getOrCreateDefaultRestaurant(tenantId);
 
-      const ingredient = await Ingredient.findOne({ 
+      const ingredient = await Ingredient.findOne({
         _id: id,
         tenantId,
-        restaurantId: restaurant._id
+        restaurantId: restaurant._id,
       });
 
       if (!ingredient) {
         return res.status(404).json({ success: false, error: 'Ingredient not found.' });
       }
 
-      // Check name uniqueness (if changed)
-      if (name.trim().toLowerCase() !== ingredient.name.toLowerCase()) {
-        const existing = await Ingredient.findOne({
-          restaurantId: restaurant._id,
-          name: name.trim()
-        });
-        if (existing) {
-          return res.status(400).json({ 
-            success: false, 
-            error: 'An ingredient with this name already exists in your inventory.' 
-          });
+      if (name !== undefined) {
+        const trimmed = String(name).trim();
+        if (!trimmed) {
+          return res.status(400).json({ success: false, error: 'Name cannot be empty.' });
         }
+        if (trimmed.toLowerCase() !== ingredient.name.toLowerCase()) {
+          const existing = await Ingredient.findOne({
+            restaurantId: restaurant._id,
+            name: trimmed,
+          });
+          if (existing) {
+            return res.status(400).json({
+              success: false,
+              error: 'An ingredient with this name already exists in your inventory.',
+            });
+          }
+        }
+        ingredient.name = trimmed;
       }
 
-      // Update fields
-      ingredient.name = name.trim();
       if (category !== undefined) {
         ingredient.category = category;
       }
-      ingredient.minThreshold = Number(minThreshold) || 0;
-      ingredient.unitRelation = {
-        purchaseUnit,
-        baseUnit,
-        conversionRatio: Number(conversionRatio) || 1
-      };
+
+      if (minThreshold !== undefined) {
+        ingredient.minThreshold = Math.max(0, Number(minThreshold) || 0);
+      }
+
+      if (
+        purchaseUnit !== undefined ||
+        baseUnit !== undefined ||
+        conversionRatio !== undefined
+      ) {
+        ingredient.unitRelation = {
+          purchaseUnit: purchaseUnit ?? ingredient.unitRelation.purchaseUnit,
+          baseUnit: baseUnit ?? ingredient.unitRelation.baseUnit,
+          conversionRatio:
+            conversionRatio !== undefined
+              ? Math.max(1, Number(conversionRatio) || 1)
+              : ingredient.unitRelation.conversionRatio,
+        };
+      }
 
       if (image !== undefined) {
         ingredient.image = image;
       }
 
-      if (purchaseUnitPrice !== undefined) {
-        const ratio = Number(conversionRatio) || 1;
-        const price = Number(purchaseUnitPrice) || 0;
-        const costPerBaseUnit = ratio > 0 ? price / ratio : 0;
-
-        if (ingredient.batches.length > 0) {
-          ingredient.batches[ingredient.batches.length - 1].costPerBaseUnit = costPerBaseUnit;
-        } else if (ingredient.currentStock > 0) {
-          ingredient.batches.push({
-            purchaseDate: new Date(),
-            originalQuantity: ingredient.currentStock,
-            remainingQuantity: ingredient.currentStock,
-            costPerBaseUnit,
-          });
-        }
+      const priceInput = purchasePrice ?? purchaseUnitPrice ?? purchaseCost;
+      if (priceInput !== undefined) {
+        ingredient.purchasePrice = Math.max(0, Number(priceInput) || 0);
       }
 
-      // If stock is modified, update currentStock and adjust batches
       if (currentStock !== undefined) {
-        const newStock = Number(currentStock) || 0;
-        ingredient.currentStock = newStock;
-        
-        // If there's an active batch, adjust it to match the new current stock.
-        // Otherwise create a dummy batch so FIFO calculations continue.
-        if (ingredient.batches.length > 0) {
-          ingredient.batches[ingredient.batches.length - 1].remainingQuantity = newStock;
-        } else {
-          ingredient.batches.push({
-            purchaseDate: new Date(),
-            originalQuantity: newStock,
-            remainingQuantity: newStock,
-            costPerBaseUnit: 0
-          });
-        }
+        ingredient.currentStock = Math.max(0, Number(currentStock) || 0);
       }
 
       await ingredient.save();
@@ -366,10 +329,6 @@ export class IngredientsController {
     }
   }
 
-  /**
-   * DELETE /api/ingredients/:id
-   * Delete an existing ingredient.
-   */
   public async deleteIngredient(req: AuthenticatedRequest, res: Response) {
     try {
       const tenantId = req.user?.tenantId;
@@ -380,10 +339,10 @@ export class IngredientsController {
       const { id } = req.params;
       const restaurant = await getOrCreateDefaultRestaurant(tenantId);
 
-      const deleted = await Ingredient.findOneAndDelete({ 
+      const deleted = await Ingredient.findOneAndDelete({
         _id: id,
         tenantId,
-        restaurantId: restaurant._id
+        restaurantId: restaurant._id,
       });
 
       if (!deleted) {
@@ -399,6 +358,76 @@ export class IngredientsController {
       return res.status(500).json({
         success: false,
         error: error.message || 'Failed to delete ingredient.',
+      });
+    }
+  }
+
+  /**
+   * PATCH /api/ingredients/:id/stock
+   * Fast stock bump. Optional purchasePrice updates the single stored price.
+   */
+  public async adjustStock(req: AuthenticatedRequest, res: Response) {
+    try {
+      const tenantId = req.user?.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context is missing.' });
+      }
+
+      const { id } = req.params;
+      const delta = Number(req.body?.delta);
+      const purchasePrice = req.body?.purchasePrice;
+
+      if (!Number.isFinite(delta) || delta === 0) {
+        return res.status(400).json({ success: false, error: 'A non-zero numeric delta is required.' });
+      }
+
+      const restaurant = await getOrCreateDefaultRestaurant(tenantId);
+      const baseFilter = { tenantId, restaurantId: restaurant._id };
+
+      const pipeline: Record<string, unknown>[] = [
+        {
+          $set: {
+            currentStock: {
+              $max: [0, { $add: ['$currentStock', delta] }],
+            },
+          },
+        },
+      ];
+
+      if (purchasePrice !== undefined && Number.isFinite(Number(purchasePrice))) {
+        pipeline.push({
+          $set: {
+            purchasePrice: Math.max(0, Number(purchasePrice)),
+          },
+        });
+      }
+
+      const ingredient = await Ingredient.findOneAndUpdate(
+        { _id: id, ...baseFilter },
+        pipeline,
+        { new: true, lean: true }
+      );
+
+      if (!ingredient) {
+        return res.status(404).json({ success: false, error: 'Ingredient not found.' });
+      }
+
+      const lowStockCount = await Ingredient.countDocuments({
+        ...baseFilter,
+        $expr: { $lte: ['$currentStock', '$minThreshold'] },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Stock updated.',
+        ingredient: withStockLevel(ingredient),
+        lowStockCount,
+      });
+    } catch (error: any) {
+      console.error('Adjust stock error:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to adjust stock.',
       });
     }
   }

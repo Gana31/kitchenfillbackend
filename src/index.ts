@@ -5,6 +5,9 @@ import { connectDB } from './config/db';
 import { AuthService } from './modules/auth/auth.service';
 import authRoutes from './modules/auth/auth.routes';
 import ingredientsRoutes from './modules/ingredients/ingredients.routes';
+import analyticsRoutes from './modules/analytics/analytics.routes';
+import ordersRoutes from './modules/orders/orders.routes';
+import recipesRoutes from './modules/recipes/recipes.routes';
 
 dotenv.config();
 
@@ -36,6 +39,9 @@ app.use(async (req, res, next) => {
 // Mount API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/ingredients', ingredientsRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/orders', ordersRoutes);
+app.use('/api/recipes', recipesRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to the Cloud Kitchen Inventory API!', status: 'running' });

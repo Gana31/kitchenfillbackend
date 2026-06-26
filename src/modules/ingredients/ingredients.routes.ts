@@ -9,6 +9,7 @@ router.get('/', authenticate, authorizeRoles('Owner', 'Staff'), controller.getIn
 router.get('/upload-signature', authenticate, authorizeRoles('Owner', 'Staff'), controller.getUploadSignature.bind(controller));
 router.post('/', authenticate, authorizeRoles('Owner', 'Staff'), controller.createIngredient.bind(controller));
 router.put('/:id', authenticate, authorizeRoles('Owner', 'Staff'), controller.updateIngredient.bind(controller));
+router.patch('/:id/stock', authenticate, authorizeRoles('Owner', 'Staff'), controller.adjustStock.bind(controller));
 router.delete('/:id', authenticate, authorizeRoles('Owner', 'Staff'), controller.deleteIngredient.bind(controller));
 
 export default router;
