@@ -1,15 +1,33 @@
 import { Router } from 'express';
 import { AuthController } from './auth.controller';
+import { PasswordController } from './password.controller';
 import { authenticate, authorizeRoles } from '../../middleware/auth';
 
 const router = Router();
 const controller = new AuthController();
+const passwordController = new PasswordController();
 
 // Public auth routes
 router.post('/register', controller.register.bind(controller));
 router.post('/login', controller.login.bind(controller));
 router.post('/refresh', controller.refresh.bind(controller));
 router.post('/logout', controller.logout.bind(controller));
+
+// Password reset / change via OTP
+router.post('/password/forgot/send-otp', passwordController.sendForgotOtp.bind(passwordController));
+router.post('/password/forgot/reset', passwordController.resetForgotPassword.bind(passwordController));
+router.post(
+  '/password/change/send-otp',
+  authenticate,
+  authorizeRoles('Superadmin', 'Owner', 'Staff'),
+  passwordController.sendChangeOtp.bind(passwordController)
+);
+router.post(
+  '/password/change/confirm',
+  authenticate,
+  authorizeRoles('Superadmin', 'Owner', 'Staff'),
+  passwordController.confirmChangePassword.bind(passwordController)
+);
 
 // Superadmin admin controls
 router.get(
