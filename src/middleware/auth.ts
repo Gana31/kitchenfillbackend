@@ -69,6 +69,21 @@ export const authenticate = async (
       tenantId: decoded.tenantId ? decoded.tenantId.toString() : null,
     };
 
+    // Superadmin can operate inside any tenant workspace via x-tenant-id header
+    if (req.user.role === 'Superadmin') {
+      const overrideTenantId = req.headers['x-tenant-id'];
+      if (overrideTenantId && typeof overrideTenantId === 'string') {
+        const tenantDoc = await Tenant.findById(overrideTenantId.trim());
+        if (!tenantDoc) {
+          return res.status(404).json({
+            success: false,
+            error: 'Tenant workspace not found.',
+          });
+        }
+        req.user.tenantId = tenantDoc._id.toString();
+      }
+    }
+
     next();
   } catch (error) {
     console.error('JWT Verification Error:', error);

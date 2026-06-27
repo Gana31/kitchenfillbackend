@@ -5,9 +5,9 @@ import { AnalyticsController } from './analytics.controller';
 const router = Router();
 const controller = new AnalyticsController();
 
-router.get('/daily', authenticate, authorizeRoles('Owner', 'Staff'), controller.getDailySummary.bind(controller));
-router.get('/top-plates', authenticate, authorizeRoles('Owner', 'Staff'), controller.getTopPlates.bind(controller));
-router.get('/platform-comparison', authenticate, authorizeRoles('Owner', 'Staff'), controller.getPlatformComparison.bind(controller));
-router.get('/sales-trend', authenticate, authorizeRoles('Owner', 'Staff'), controller.getSalesTrend.bind(controller));
+router.get('/daily', authenticate, authorizeRoles('Owner', 'Staff', 'Superadmin'), controller.getDailySummary.bind(controller));
+router.get('/top-plates', authenticate, authorizeRoles('Owner', 'Staff', 'Superadmin'), controller.getTopPlates.bind(controller));
+router.get('/platform-comparison', authenticate, authorizeRoles('Owner', 'Staff', 'Superadmin'), controller.getPlatformComparison.bind(controller));
+router.get('/sales-trend', authenticate, authorizeRoles('Owner', 'Staff', 'Superadmin'), controller.getSalesTrend.bind(controller));
 
 export default router;

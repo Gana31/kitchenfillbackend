@@ -5,6 +5,6 @@ import { OrdersController } from './orders.controller';
 const router = Router();
 const controller = new OrdersController();
 
-router.post('/manual', authenticate, authorizeRoles('Owner', 'Staff'), controller.createManualOrder.bind(controller));
+router.post('/manual', authenticate, authorizeRoles('Owner', 'Staff', 'Superadmin'), controller.createManualOrder.bind(controller));
 
 export default router;
