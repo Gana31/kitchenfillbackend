@@ -66,26 +66,71 @@ export interface ComputedRecipeCosting {
   portions: ComputedPortion[];
 }
 
-export async function computeRecipeCosting(
-  tenantId: Types.ObjectId,
-  restaurantId: Types.ObjectId,
-  recipe: RecipeCostingInput
-): Promise<ComputedRecipeCosting> {
+export interface IngredientCostLookup {
+  purchasePrice: number;
+  conversionRatio: number;
+}
+
+type LeanIngredient = {
+  _id: Types.ObjectId | string;
+  purchasePrice?: number;
+  unitRelation?: { conversionRatio?: number };
+};
+
+function sumIngredientSubtotal(
+  ingredientsUsed: RecipeCostingInput['ingredientsUsed'],
+  lookup: Map<string, IngredientCostLookup>
+): number {
   let ingredientSubtotal = 0;
 
-  for (const line of recipe.ingredientsUsed) {
-    const ingredient = await Ingredient.findOne({
-      _id: line.ingredientId,
-      tenantId,
-      restaurantId,
-    }).lean();
-
+  for (const line of ingredientsUsed) {
+    const ingredient = lookup.get(String(line.ingredientId));
     if (!ingredient) continue;
 
-    const ratio = ingredient.unitRelation?.conversionRatio ?? 1;
-    const unitCost = getCostPerBaseUnit(ingredient.purchasePrice ?? 0, ratio);
+    const unitCost = getCostPerBaseUnit(ingredient.purchasePrice, ingredient.conversionRatio);
     ingredientSubtotal += lineIngredientCost(line.netAmount, line.wastagePercent, unitCost);
   }
+
+  return ingredientSubtotal;
+}
+
+export function buildIngredientCostLookup(
+  ingredients: LeanIngredient[]
+): Map<string, IngredientCostLookup> {
+  const lookup = new Map<string, IngredientCostLookup>();
+
+  for (const ingredient of ingredients) {
+    lookup.set(String(ingredient._id), {
+      purchasePrice: ingredient.purchasePrice ?? 0,
+      conversionRatio: ingredient.unitRelation?.conversionRatio ?? 1,
+    });
+  }
+
+  return lookup;
+}
+
+export async function fetchIngredientCostLookup(
+  tenantId: Types.ObjectId,
+  restaurantId: Types.ObjectId,
+  ingredientIds: Array<Types.ObjectId | string>
+): Promise<Map<string, IngredientCostLookup>> {
+  const uniqueIds = [...new Set(ingredientIds.map(String))];
+  if (uniqueIds.length === 0) return new Map();
+
+  const ingredients = await Ingredient.find({
+    _id: { $in: uniqueIds },
+    tenantId,
+    restaurantId,
+  }).lean();
+
+  return buildIngredientCostLookup(ingredients);
+}
+
+export function computeRecipeCostingSync(
+  recipe: RecipeCostingInput,
+  lookup: Map<string, IngredientCostLookup>
+): ComputedRecipeCosting {
+  const ingredientSubtotal = sumIngredientSubtotal(recipe.ingredientsUsed, lookup);
 
   const extraWastagePercent = Math.max(0, recipe.extraWastagePercent ?? 0);
   const customCostTotal = (recipe.customCostLines ?? []).reduce(
@@ -130,4 +175,14 @@ export async function computeRecipeCosting(
     costingMode: recipe.costingMode,
     portions,
   };
+}
+
+export async function computeRecipeCosting(
+  tenantId: Types.ObjectId,
+  restaurantId: Types.ObjectId,
+  recipe: RecipeCostingInput
+): Promise<ComputedRecipeCosting> {
+  const ingredientIds = recipe.ingredientsUsed.map((line) => line.ingredientId);
+  const lookup = await fetchIngredientCostLookup(tenantId, restaurantId, ingredientIds);
+  return computeRecipeCostingSync(recipe, lookup);
 }

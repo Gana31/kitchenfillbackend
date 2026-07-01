@@ -1,6 +1,10 @@
 import { Types } from 'mongoose';
 import { Recipe, IRecipe } from './models/Recipe';
-import { computeRecipeCosting } from '../../shared/recipeCosting';
+import {
+  computeRecipeCosting,
+  computeRecipeCostingSync,
+  fetchIngredientCostLookup,
+} from '../../shared/recipeCosting';
 
 interface RestaurantScope {
   tenantId: Types.ObjectId;
@@ -24,9 +28,22 @@ export class RecipesService {
       .sort({ name: 1 })
       .lean();
 
-    return Promise.all(
-      recipes.map(async (recipe) => {
-        const costing = await computeRecipeCosting(scope.tenantId, scope.restaurantId, {
+    const ingredientIds = new Set<string>();
+    for (const recipe of recipes) {
+      for (const line of recipe.ingredientsUsed ?? []) {
+        ingredientIds.add(String(line.ingredientId));
+      }
+    }
+
+    const lookup = await fetchIngredientCostLookup(
+      scope.tenantId,
+      scope.restaurantId,
+      [...ingredientIds]
+    );
+
+    return recipes.map((recipe) => {
+      const costing = computeRecipeCostingSync(
+        {
           costingMode: recipe.costingMode,
           batchYieldAmount: recipe.batchYieldAmount,
           batchYieldUnit: recipe.batchYieldUnit,
@@ -35,14 +52,15 @@ export class RecipesService {
           customCostLines: recipe.customCostLines ?? [],
           extraWastagePercent: recipe.extraWastagePercent ?? 0,
           portions: recipe.portions,
-        });
+        },
+        lookup
+      );
 
-        return {
-          ...recipe,
-          costing,
-        };
-      })
-    );
+      return {
+        ...recipe,
+        costing,
+      };
+    });
   }
 
   async getCounterMenu(scope: RestaurantScope) {
