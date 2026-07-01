@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { Ingredient } from './models/Ingredient';
 import { Restaurant } from '../auth/models/Restaurant';
-import { withStockLevel } from './stockLevel';
+import { withStockLevel, buildStockLevelMongoFilter, StockLevel } from './stockLevel';
 
 async function getOrCreateDefaultRestaurant(tenantId: string): Promise<any> {
   let restaurant = await Restaurant.findOne({ tenantId });
@@ -32,6 +32,13 @@ export class IngredientsController {
       const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
       const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
       const sortBy = typeof req.query.sortBy === 'string' ? req.query.sortBy : 'name-asc';
+      const stockLevelParam =
+        typeof req.query.stockLevel === 'string' ? req.query.stockLevel.trim() : '';
+      const stockLevelFilter = (['low', 'average', 'high'] as StockLevel[]).includes(
+        stockLevelParam as StockLevel
+      )
+        ? (stockLevelParam as StockLevel)
+        : null;
       const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit || '15'), 10) || 15));
       const skip = (page - 1) * limit;
 
@@ -42,6 +49,10 @@ export class IngredientsController {
 
       if (search) {
         filter.name = { $regex: search, $options: 'i' };
+      }
+
+      if (stockLevelFilter) {
+        Object.assign(filter, buildStockLevelMongoFilter(stockLevelFilter));
       }
 
       let sort: Record<string, 1 | -1> = { name: 1 };

@@ -27,3 +27,43 @@ export function withStockLevel<T extends { currentStock: number; minThreshold: n
     stockLevel: computeStockLevel(ingredient.currentStock, ingredient.minThreshold),
   };
 }
+
+/** MongoDB filter matching {@link computeStockLevel} rules. */
+export function buildStockLevelMongoFilter(stockLevel: StockLevel): Record<string, unknown> {
+  switch (stockLevel) {
+    case 'low':
+      return { $expr: { $lte: ['$currentStock', '$minThreshold'] } };
+    case 'average':
+      return {
+        minThreshold: { $gt: 0 },
+        $expr: {
+          $and: [
+            { $gt: ['$currentStock', '$minThreshold'] },
+            {
+              $lte: [
+                '$currentStock',
+                { $multiply: ['$minThreshold', AVERAGE_STOCK_MULTIPLIER] },
+              ],
+            },
+          ],
+        },
+      };
+    case 'high':
+      return {
+        $or: [
+          { minThreshold: { $lte: 0 }, currentStock: { $gt: 0 } },
+          {
+            minThreshold: { $gt: 0 },
+            $expr: {
+              $gt: [
+                '$currentStock',
+                { $multiply: ['$minThreshold', AVERAGE_STOCK_MULTIPLIER] },
+              ],
+            },
+          },
+        ],
+      };
+    default:
+      return {};
+  }
+}
